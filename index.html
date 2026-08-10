@@ -284,6 +284,16 @@ h1 em{font-style:normal;color:var(--signal)}
 }
 .drawing-block ul{list-style:none;display:flex;flex-wrap:wrap;gap:var(--s6)}
 .drawing-block b{color:var(--paper);font-weight:400}
+.redraw{
+  background:none;border:1px solid var(--line-dark);color:var(--steel);cursor:pointer;
+  font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  padding:5px 10px;
+  transition:color var(--t-quick) ease,border-color var(--t-quick) ease,background var(--t-quick) ease;
+}
+.redraw:hover{color:var(--ink);background:var(--signal);border-color:var(--signal)}
+.redraw:active{transform:translateY(1px)}
+.hero-anim [data-wash]{opacity:0}
+
 .stamp{
   border:2px solid var(--signal);color:var(--signal);
   font-family:var(--ff-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
@@ -613,6 +623,18 @@ h1 em{font-style:normal;color:var(--signal)}
   <div class="wrap drawing">
     <div class="drawing-scroll" tabindex="0" role="group" aria-label="Storefront elevation drawing, scrollable">
     <svg class="elevation" viewBox="0 0 1200 380" role="img" aria-labelledby="elev-title">
+      <defs>
+        <linearGradient id="plot-glow" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0"   stop-color="#ef5f2a" stop-opacity="0"/>
+          <stop offset="0.7" stop-color="#ef5f2a" stop-opacity="0.16"/>
+          <stop offset="1"   stop-color="#ef5f2a" stop-opacity="0.55"/>
+        </linearGradient>
+      </defs>
+      <g data-plotter opacity="0">
+        <rect x="-70" y="8" width="70" height="364" fill="url(#plot-glow)"/>
+        <rect x="-1.2" y="8" width="1.2" height="364" fill="#ef5f2a"/>
+        <path d="M-7 8 L7 8 M-7 372 L7 372" stroke="#ef5f2a" stroke-width="1.4"/>
+      </g>
       <title id="elev-title">Storefront elevation: fascia band, glazing modules, double-leaf entry and an orange campaign panel, dimensioned.</title>
 
       <!-- overall dimension, top -->
@@ -633,7 +655,7 @@ h1 em{font-style:normal;color:var(--signal)}
       <path class="ln-thin" data-draw d="M100 158 L1100 158"/>
 
       <!-- glazing modules, left bay -->
-      <rect class="glass" x="100" y="118" width="440" height="200"/>
+      <rect class="glass" data-wash x="100" y="118" width="440" height="200"/>
       <path class="ln-thin" data-draw d="M210 118 L210 318 M320 118 L320 318 M430 118 L430 318"/>
 
       <!-- campaign panel: the brand slot. Its fill cycles because the shell stays and the campaign changes. -->
@@ -650,7 +672,7 @@ h1 em{font-style:normal;color:var(--signal)}
       <path class="dim-dash" data-draw d="M600 318 A60 60 0 0 1 540 258"/>
 
       <!-- glazing modules, right bay -->
-      <rect class="glass" x="660" y="118" width="440" height="200"/>
+      <rect class="glass" data-wash x="660" y="118" width="440" height="200"/>
       <path class="ln-thin" data-draw d="M770 118 L770 318 M880 118 L880 318 M990 118 L990 318"/>
 
       <!-- ground line -->
@@ -681,6 +703,7 @@ h1 em{font-style:normal;color:var(--signal)}
         <li>Drawing <b>Typical storefront elevation</b></li>
         <li>Scale <b>1:50</b></li>
         <li>Units <b>mm</b></li>
+        <li><button class="redraw" type="button" data-redraw>Redraw &#8635;</button></li>
       </ul>
       <div class="stamp" data-stamp>Issued for construction<small>Art Vision · Cairo</small></div>
     </div>
@@ -1098,101 +1121,181 @@ h1 em{font-style:normal;color:var(--signal)}
   if(svg){
     var strokes  = svg.querySelectorAll("[data-draw]");
     var fades    = svg.querySelectorAll("[data-fade]");
+    var washes   = svg.querySelectorAll("[data-wash]");
     var panel    = svg.querySelector("[data-panel]");
+    var plotter  = svg.querySelector("[data-plotter]");
     var counters = svg.querySelectorAll("[data-count]");
     var swatches = svg.querySelectorAll("[data-swatch]");
+    var redraw   = document.querySelector("[data-redraw]");
+
+    var LOOP_EVERY = 0;    // seconds between automatic replays while on screen. 0 = off.
+                           // Set to e.g. 9 for a hero that redraws itself on a loop.
+    var VB_W  = 1200;      // viewBox width the sweep crosses
+    var SWEEP = 1.55;      // seconds for the plotter head to cross the sheet
+    var T0    = 0.42;      // sweep starts as the spec list lands
+
+    function endState(){
+      fades.forEach(function(t){ t.style.transition=""; t.style.opacity = 1; });
+      washes.forEach(function(t){ t.style.transition=""; t.style.opacity = 1; });
+      strokes.forEach(function(el){
+        el.style.transition = ""; el.style.strokeDasharray = ""; el.style.strokeDashoffset = "";
+      });
+      if(panel) panel.setAttribute("opacity", 1);
+      if(plotter) plotter.setAttribute("opacity", 0);
+      if(stamp){ stamp.style.transition=""; stamp.style.opacity = 1; stamp.style.transform = "rotate(-3deg)"; }
+      counters.forEach(function(el){ el.textContent = el.dataset.count; });
+    }
 
     if(reduce){
-      fades.forEach(function(t){ t.style.opacity = 1; });
-      if(panel) panel.setAttribute("opacity", 1);
-      if(stamp) stamp.style.opacity = 1;
+      endState();
     } else {
-      var T0 = 0.48;                                  // drawing starts as the spec list lands
-      var STAG = 0.018;                               // tight enough to read as one gesture
-      var endAt = 0;                                  // when the last stroke actually finishes
+      var timers = [];
+      function later(fn, ms){ timers.push(window.setTimeout(fn, ms)); }
+      function clearAll(){ timers.forEach(clearTimeout); timers = []; }
 
-      fades.forEach(function(t){ t.style.opacity = 0; });
-      if(stamp){ stamp.style.opacity = 0; stamp.style.transform = "rotate(-3deg) scale(.94)"; }
-
-      // Seed the start state with transitions OFF, flush layout, then arm and fire.
-      // Doing all three in one pass lets the browser cancel the transition instead of running it.
-      var lens = [];
-      strokes.forEach(function(el, i){
+      // Each stroke is keyed to WHERE it sits, not to its order in the markup, so the
+      // sheet appears in the plotter head's wake instead of in an arbitrary sequence.
+      var plan = [];
+      strokes.forEach(function(el){
+        var bb;
+        try { bb = el.getBBox(); } catch(e){ bb = {x:0, width:VB_W}; }
+        var startFrac = Math.max(0, Math.min(1, bb.x / VB_W));
+        var spanFrac  = Math.max(0, Math.min(1, bb.width / VB_W));
         var len;
         try { len = el.getTotalLength(); } catch(e){ len = 600; }
         if(!len || !isFinite(len) || len < 1) len = 600;
-        lens[i] = len;
-        el.style.transition       = "none";
-        el.style.strokeDasharray  = len;
-        el.style.strokeDashoffset = len;
-      });
-      void svg.getBoundingClientRect();                       // forced reflow: commits the start state
-      strokes.forEach(function(el, i){
-        var dur = Math.min(0.78, 0.30 + lens[i]/3200);
-        endAt = Math.max(endAt, T0 + i * STAG + dur);
-        el.style.transition = "stroke-dashoffset " + dur +
-                              "s cubic-bezier(.25,1,.5,1) " + (T0 + i * STAG) + "s";
-      });
-      requestAnimationFrame(function(){
-        strokes.forEach(function(el){ el.style.strokeDashoffset = 0; });
-      });
-
-      // the panel is the payoff of the drawing, so it lands on its own
-      window.setTimeout(function(){
-        if(panel){
-          panel.style.transition = "opacity .5s ease";
-          panel.setAttribute("opacity", 1);
-        }
-      }, (endAt + 0.04) * 1000);
-
-      // annotations settle, and the figures resolve as if being measured
-      window.setTimeout(function(){
-        fades.forEach(function(t, i){
-          t.style.transition = "opacity .4s ease " + (i * 0.04) + "s";
-          t.style.opacity = 1;
+        plan.push({
+          el: el, len: len,
+          delay: T0 + startFrac * SWEEP,
+          dur:   Math.max(0.20, spanFrac * SWEEP)      // wide runs draw exactly as the head crosses them
         });
-        counters.forEach(function(el){
-          var target = parseInt(el.dataset.count, 10);
-          var t0 = null, dur = 850;
-          (function tick(now){
-            if(t0 === null) t0 = now;
-            var p = Math.min(1, (now - t0) / dur);
-            var eased = 1 - Math.pow(1 - p, 3);
-            el.textContent = Math.round(target * eased / 50) * 50;
-            if(p < 1) requestAnimationFrame(tick);
-            else el.textContent = target;
-          })(performance.now());
-        });
-      }, (endAt + 0.16) * 1000);
+      });
+      var endAt = plan.reduce(function(m, p){ return Math.max(m, p.delay + p.dur); }, 0);
 
-      window.setTimeout(function(){
-        if(stamp){
-          stamp.style.transition = "opacity .35s ease, transform .5s cubic-bezier(.22,1,.36,1)";
-          stamp.style.opacity = 1;
-          stamp.style.transform = "rotate(-3deg) scale(1)";
-        }
-      }, (endAt + 0.46) * 1000);
+      function run(){
+        clearAll();
 
-      /* Ambient layer: the shell stays, the campaign changes. Runs only while the
-         drawing is on screen and the tab is visible. */
-      if(swatches.length > 1){
-        var idx = 0, timer = null;
-        function advance(){
-          swatches[idx].classList.remove("is-on");
-          idx = (idx + 1) % swatches.length;
-          swatches[idx].classList.add("is-on");
-        }
-        function play(){ if(!timer) timer = window.setInterval(advance, 4200); }
-        function pause(){ if(timer){ window.clearInterval(timer); timer = null; } }
-        if("IntersectionObserver" in window){
-          new IntersectionObserver(function(entries){
-            entries.forEach(function(en){ en.isIntersecting ? play() : pause(); });
-          }, {threshold:0.25}).observe(svg);
-        } else { play(); }
-        document.addEventListener("visibilitychange", function(){
-          document.hidden ? pause() : play();
+        // seed with transitions off so the browser can't collapse the start state
+        plan.forEach(function(p){
+          p.el.style.transition = "none";
+          p.el.style.strokeDasharray = p.len;
+          p.el.style.strokeDashoffset = p.len;
         });
+        fades.forEach(function(t){ t.style.transition = "none"; t.style.opacity = 0; });
+        washes.forEach(function(t){ t.style.transition = "none"; t.style.opacity = 0; });
+        if(panel) panel.setAttribute("opacity", 0);
+        if(stamp){ stamp.style.transition = "none"; stamp.style.opacity = 0; stamp.style.transform = "rotate(-3deg) scale(.94)"; }
+        counters.forEach(function(el){ el.textContent = "0"; });
+        if(plotter){
+          plotter.style.transition = "none";
+          plotter.style.transform = "translateX(0px)";
+          plotter.setAttribute("opacity", 0);
+        }
+
+        void svg.getBoundingClientRect();
+
+        plan.forEach(function(p){
+          p.el.style.transition = "stroke-dashoffset " + p.dur +
+                                  "s cubic-bezier(.33,0,.2,1) " + p.delay + "s";
+        });
+        washes.forEach(function(t){
+          var x = 0;
+          try { x = t.getBBox().x / VB_W; } catch(e){}
+          t.style.transition = "opacity .5s ease " + (T0 + x * SWEEP + 0.1) + "s";
+        });
+        if(plotter){
+          plotter.style.transition = "transform " + SWEEP + "s linear " + T0 +
+                                     "s, opacity .18s ease " + T0 + "s";
+        }
+
+        requestAnimationFrame(function(){
+          plan.forEach(function(p){ p.el.style.strokeDashoffset = 0; });
+          washes.forEach(function(t){ t.style.opacity = 1; });
+          if(plotter){
+            plotter.setAttribute("opacity", 1);
+            plotter.style.transform = "translateX(" + (VB_W + 80) + "px)";
+          }
+        });
+
+        // head lifts off the sheet once it has crossed
+        later(function(){
+          if(plotter){
+            plotter.style.transition = "opacity .3s ease";
+            plotter.setAttribute("opacity", 0);
+          }
+        }, (T0 + SWEEP + 0.02) * 1000);
+
+        later(function(){
+          if(panel){ panel.style.transition = "opacity .5s ease"; panel.setAttribute("opacity", 1); }
+        }, (endAt + 0.04) * 1000);
+
+        later(function(){
+          fades.forEach(function(t, i){
+            t.style.transition = "opacity .4s ease " + (i * 0.035) + "s";
+            t.style.opacity = 1;
+          });
+          counters.forEach(function(el){
+            var target = parseInt(el.dataset.count, 10), t0 = null, dur = 850;
+            (function tick(now){
+              if(t0 === null) t0 = now;
+              var p = Math.min(1, (now - t0) / dur);
+              el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)) / 50) * 50;
+              if(p < 1) requestAnimationFrame(tick); else el.textContent = target;
+            })(performance.now());
+          });
+        }, (endAt + 0.16) * 1000);
+
+        later(function(){
+          if(stamp){
+            stamp.style.transition = "opacity .35s ease, transform .5s cubic-bezier(.22,1,.36,1)";
+            stamp.style.opacity = 1;
+            stamp.style.transform = "rotate(-3deg) scale(1)";
+          }
+        }, (endAt + 0.46) * 1000);
       }
+
+      run();
+
+      // Repeatable: replays whenever the sheet comes back into view, and on demand.
+      var wasOut = false, loop = null;
+      function stopLoop(){ if(loop){ window.clearInterval(loop); loop = null; } }
+      function startLoop(){
+        if(LOOP_EVERY > 0 && !loop) loop = window.setInterval(run, LOOP_EVERY * 1000);
+      }
+      if("IntersectionObserver" in window){
+        new IntersectionObserver(function(entries){
+          entries.forEach(function(en){
+            if(!en.isIntersecting){ wasOut = true; stopLoop(); return; }
+            if(wasOut){ wasOut = false; run(); }
+            startLoop();
+          });
+        }, {threshold:0.35}).observe(svg);
+      } else { startLoop(); }
+      document.addEventListener("visibilitychange", function(){
+        document.hidden ? stopLoop() : startLoop();
+      });
+      if(redraw) redraw.addEventListener("click", run);
+    }
+
+    if(redraw && reduce) redraw.addEventListener("click", endState);
+
+    /* Ambient: the shell stays, the campaign changes. Paused off screen and in
+       background tabs. */
+    if(swatches.length > 1 && !reduce){
+      var idx = 0, timer = null;
+      function advance(){
+        swatches[idx].classList.remove("is-on");
+        idx = (idx + 1) % swatches.length;
+        swatches[idx].classList.add("is-on");
+      }
+      function play(){ if(!timer) timer = window.setInterval(advance, 4200); }
+      function pause(){ if(timer){ window.clearInterval(timer); timer = null; } }
+      if("IntersectionObserver" in window){
+        new IntersectionObserver(function(entries){
+          entries.forEach(function(en){ en.isIntersecting ? play() : pause(); });
+        }, {threshold:0.25}).observe(svg);
+      } else { play(); }
+      document.addEventListener("visibilitychange", function(){ document.hidden ? pause() : play(); });
     }
   }
 
