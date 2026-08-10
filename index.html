@@ -81,18 +81,6 @@ if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches)document.docum
   <div class="wrap drawing">
     <div class="drawing-scroll" tabindex="0" role="group" aria-label="Storefront elevation drawing, scrollable">
     <svg class="elevation" viewBox="0 0 1200 380" role="img" aria-labelledby="elev-title">
-      <defs>
-        <linearGradient id="plot-glow" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0"   stop-color="#ef5f2a" stop-opacity="0"/>
-          <stop offset="0.7" stop-color="#ef5f2a" stop-opacity="0.16"/>
-          <stop offset="1"   stop-color="#ef5f2a" stop-opacity="0.55"/>
-        </linearGradient>
-      </defs>
-      <g data-plotter opacity="0">
-        <rect x="-70" y="8" width="70" height="364" fill="url(#plot-glow)"/>
-        <rect x="-1.2" y="8" width="1.2" height="364" fill="#ef5f2a"/>
-        <path d="M-7 8 L7 8 M-7 372 L7 372" stroke="#ef5f2a" stroke-width="1.4"/>
-      </g>
       <title id="elev-title">Storefront elevation: fascia band, glazing modules, double-leaf entry and an orange campaign panel, dimensioned.</title>
 
       <!-- overall dimension, top -->
@@ -161,7 +149,6 @@ if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches)document.docum
         <li>Drawing <b>Typical storefront elevation</b></li>
         <li>Scale <b>1:50</b></li>
         <li>Units <b>mm</b></li>
-        <li><button class="redraw" type="button" data-redraw>Redraw &#8635;</button></li>
       </ul>
       <div class="stamp" data-stamp>Issued for construction<small>Art Vision · Cairo</small></div>
     </div>
@@ -562,15 +549,13 @@ if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches)document.docum
     var fades    = svg.querySelectorAll("[data-fade]");
     var washes   = svg.querySelectorAll("[data-wash]");
     var panel    = svg.querySelector("[data-panel]");
-    var plotter  = svg.querySelector("[data-plotter]");
     var counters = svg.querySelectorAll("[data-count]");
     var swatches = svg.querySelectorAll("[data-swatch]");
-    var redraw   = document.querySelector("[data-redraw]");
 
     var LOOP_EVERY = 0;    // seconds between automatic replays while on screen. 0 = off.
                            // Set to e.g. 9 for a hero that redraws itself on a loop.
     var VB_W  = 1200;      // viewBox width the sweep crosses
-    var SWEEP = 1.55;      // seconds for the plotter head to cross the sheet
+    var SWEEP = 1.55;      // seconds for the reveal to travel across the sheet
     var T0    = 0.42;      // sweep starts as the spec list lands
 
     function endState(){
@@ -580,7 +565,6 @@ if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches)document.docum
         el.style.transition = ""; el.style.strokeDasharray = ""; el.style.strokeDashoffset = "";
       });
       if(panel) panel.setAttribute("opacity", 1);
-      if(plotter) plotter.setAttribute("opacity", 0);
       if(stamp){ stamp.style.transition=""; stamp.style.opacity = 1; stamp.style.transform = "rotate(-3deg)"; }
       counters.forEach(function(el){ el.textContent = el.dataset.count; });
     }
@@ -593,7 +577,7 @@ if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches)document.docum
       function clearAll(){ timers.forEach(clearTimeout); timers = []; }
 
       // Each stroke is keyed to WHERE it sits, not to its order in the markup, so the
-      // sheet appears in the plotter head's wake instead of in an arbitrary sequence.
+      // sheet builds across left to right instead of in an arbitrary sequence.
       var plan = [];
       strokes.forEach(function(el){
         var bb;
@@ -606,7 +590,7 @@ if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches)document.docum
         plan.push({
           el: el, len: len,
           delay: T0 + startFrac * SWEEP,
-          dur:   Math.max(0.20, spanFrac * SWEEP)      // wide runs draw exactly as the head crosses them
+          dur:   Math.max(0.20, spanFrac * SWEEP)      // wide runs draw across at the sweep pace
         });
       });
       var endAt = plan.reduce(function(m, p){ return Math.max(m, p.delay + p.dur); }, 0);
@@ -625,11 +609,6 @@ if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches)document.docum
         if(panel) panel.setAttribute("opacity", 0);
         if(stamp){ stamp.style.transition = "none"; stamp.style.opacity = 0; stamp.style.transform = "rotate(-3deg) scale(.94)"; }
         counters.forEach(function(el){ el.textContent = "0"; });
-        if(plotter){
-          plotter.style.transition = "none";
-          plotter.style.transform = "translateX(0px)";
-          plotter.setAttribute("opacity", 0);
-        }
 
         void svg.getBoundingClientRect();
 
@@ -642,27 +621,11 @@ if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches)document.docum
           try { x = t.getBBox().x / VB_W; } catch(e){}
           t.style.transition = "opacity .5s ease " + (T0 + x * SWEEP + 0.1) + "s";
         });
-        if(plotter){
-          plotter.style.transition = "transform " + SWEEP + "s linear " + T0 +
-                                     "s, opacity .18s ease " + T0 + "s";
-        }
 
         requestAnimationFrame(function(){
           plan.forEach(function(p){ p.el.style.strokeDashoffset = 0; });
           washes.forEach(function(t){ t.style.opacity = 1; });
-          if(plotter){
-            plotter.setAttribute("opacity", 1);
-            plotter.style.transform = "translateX(" + (VB_W + 80) + "px)";
-          }
         });
-
-        // head lifts off the sheet once it has crossed
-        later(function(){
-          if(plotter){
-            plotter.style.transition = "opacity .3s ease";
-            plotter.setAttribute("opacity", 0);
-          }
-        }, (T0 + SWEEP + 0.02) * 1000);
 
         later(function(){
           if(panel){ panel.style.transition = "opacity .5s ease"; panel.setAttribute("opacity", 1); }
@@ -713,10 +676,8 @@ if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches)document.docum
       document.addEventListener("visibilitychange", function(){
         document.hidden ? stopLoop() : startLoop();
       });
-      if(redraw) redraw.addEventListener("click", run);
     }
 
-    if(redraw && reduce) redraw.addEventListener("click", endState);
 
     /* Ambient: the shell stays, the campaign changes. Paused off screen and in
        background tabs. */

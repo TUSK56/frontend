@@ -256,14 +256,6 @@ h1 em{font-style:normal;color:var(--signal)}
 }
 .drawing-block ul{list-style:none;display:flex;flex-wrap:wrap;gap:var(--s6)}
 .drawing-block b{color:var(--paper);font-weight:400}
-.redraw{
-  background:none;border:1px solid var(--line-dark);color:var(--steel);cursor:pointer;
-  font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
-  padding:5px 10px;
-  transition:color var(--t-quick) ease,border-color var(--t-quick) ease,background var(--t-quick) ease;
-}
-.redraw:hover{color:var(--ink);background:var(--signal);border-color:var(--signal)}
-.redraw:active{transform:translateY(1px)}
 .hero-anim [data-wash]{opacity:0}
 
 .stamp{
